@@ -1,3 +1,4 @@
+import os
 import questionary
 from typing import List, Optional, Tuple, Dict
 
@@ -6,8 +7,6 @@ from rich.console import Console
 from cli.models import AnalystType
 
 console = Console()
-
-TICKER_INPUT_EXAMPLES = "Examples: SPY, CNC.TO, 7203.T, 0700.HK"
 
 ANALYST_ORDER = [
     ("Market Analyst", AnalystType.MARKET),
@@ -20,7 +19,7 @@ ANALYST_ORDER = [
 def get_ticker() -> str:
     """Prompt the user to enter a ticker symbol."""
     ticker = questionary.text(
-        f"Enter the exact ticker symbol to analyze ({TICKER_INPUT_EXAMPLES}):",
+        "Enter the ticker symbol to analyze:",
         validate=lambda x: len(x.strip()) > 0 or "Please enter a valid ticker symbol.",
         style=questionary.Style(
             [
@@ -34,11 +33,6 @@ def get_ticker() -> str:
         console.print("\n[red]No ticker symbol provided. Exiting...[/red]")
         exit(1)
 
-    return normalize_ticker_symbol(ticker)
-
-
-def normalize_ticker_symbol(ticker: str) -> str:
-    """Normalize ticker input while preserving exchange suffixes."""
     return ticker.strip().upper()
 
 
@@ -135,6 +129,25 @@ def select_research_depth() -> int:
 
 def select_shallow_thinking_agent(provider) -> str:
     """Select shallow thinking llm engine using an interactive selection."""
+    provider_lower = provider.lower()
+
+    if provider_lower in ("vllm", "llama_cpp"):
+        backend_name = "vLLM" if provider_lower == "vllm" else "llama.cpp"
+        model = questionary.text(
+            f"Enter {backend_name} shallow model name (OpenAI model id):",
+            default="",
+            validate=lambda x: len(x.strip()) > 0 or "Please enter a valid model name.",
+            style=questionary.Style(
+                [
+                    ("text", "fg:green"),
+                    ("highlighted", "noinherit"),
+                ]
+            ),
+        ).ask()
+        if not model:
+            console.print(f"\n[red]No {backend_name} shallow model provided. Exiting...[/red]")
+            exit(1)
+        return model.strip()
 
     # Define shallow thinking llm engine options with their corresponding model names
     # Ordering: medium → light → heavy (balanced first for quick tasks)
@@ -167,9 +180,19 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Z.AI GLM 4.5 Air (free)", "z-ai/glm-4.5-air:free"),
         ],
         "ollama": [
+            ("DeepSeek R1 (8B, local)", "deepseek-r1:8b"),
             ("Qwen3:latest (8B, local)", "qwen3:latest"),
             ("GPT-OSS:latest (20B, local)", "gpt-oss:latest"),
             ("GLM-4.7-Flash:latest (30B, local)", "glm-4.7-flash:latest"),
+        ],
+        "llama_cpp": [
+            ("Qwen3.5-4B.Q8_0.gguf (local)", "Qwen3.5-4B.Q8_0.gguf"),
+        ],
+        "cerebras": [
+            ("Llama 3.1 8B (Cerebras)", "llama3.1-8b"),
+            ("GPT-OSS 120B (Cerebras)", "gpt-oss-120b"),
+            ("Qwen3 235B A22B Instruct (Cerebras)", "qwen-3-235b-a22b-instruct-2507"),
+            ("Z.AI GLM 4.7 (Cerebras)", "zai-glm-4.7"),
         ],
     }
 
@@ -177,7 +200,7 @@ def select_shallow_thinking_agent(provider) -> str:
         "Select Your [Quick-Thinking LLM Engine]:",
         choices=[
             questionary.Choice(display, value=value)
-            for display, value in SHALLOW_AGENT_OPTIONS[provider.lower()]
+        for display, value in SHALLOW_AGENT_OPTIONS[provider_lower]
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -200,6 +223,25 @@ def select_shallow_thinking_agent(provider) -> str:
 
 def select_deep_thinking_agent(provider) -> str:
     """Select deep thinking llm engine using an interactive selection."""
+    provider_lower = provider.lower()
+
+    if provider_lower in ("vllm", "llama_cpp"):
+        backend_name = "vLLM" if provider_lower == "vllm" else "llama.cpp"
+        model = questionary.text(
+            f"Enter {backend_name} deep model name (OpenAI model id):",
+            default="",
+            validate=lambda x: len(x.strip()) > 0 or "Please enter a valid model name.",
+            style=questionary.Style(
+                [
+                    ("text", "fg:green"),
+                    ("highlighted", "noinherit"),
+                ]
+            ),
+        ).ask()
+        if not model:
+            console.print(f"\n[red]No {backend_name} deep model provided. Exiting...[/red]")
+            exit(1)
+        return model.strip()
 
     # Define deep thinking llm engine options with their corresponding model names
     # Ordering: heavy → medium → light (most capable first for deep tasks)
@@ -234,9 +276,19 @@ def select_deep_thinking_agent(provider) -> str:
             ("NVIDIA Nemotron 3 Nano 30B (free)", "nvidia/nemotron-3-nano-30b-a3b:free"),
         ],
         "ollama": [
+            ("DeepSeek R1 (8B, local)", "deepseek-r1:8b"),
             ("GLM-4.7-Flash:latest (30B, local)", "glm-4.7-flash:latest"),
             ("GPT-OSS:latest (20B, local)", "gpt-oss:latest"),
             ("Qwen3:latest (8B, local)", "qwen3:latest"),
+        ],
+        "llama_cpp": [
+            ("Qwen3.5-4B.Q8_0.gguf (local)", "Qwen3.5-4B.Q8_0.gguf"),
+        ],
+        "cerebras": [
+            ("GPT-OSS 120B (Cerebras)", "gpt-oss-120b"),
+            ("Qwen3 235B A22B Instruct (Cerebras)", "qwen-3-235b-a22b-instruct-2507"),
+            ("Z.AI GLM 4.7 (Cerebras)", "zai-glm-4.7"),
+            ("Llama 3.1 8B (Cerebras)", "llama3.1-8b"),
         ],
     }
 
@@ -244,7 +296,7 @@ def select_deep_thinking_agent(provider) -> str:
         "Select Your [Deep-Thinking LLM Engine]:",
         choices=[
             questionary.Choice(display, value=value)
-            for display, value in DEEP_AGENT_OPTIONS[provider.lower()]
+        for display, value in DEEP_AGENT_OPTIONS[provider_lower]
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
@@ -263,15 +315,19 @@ def select_deep_thinking_agent(provider) -> str:
     return choice
 
 def select_llm_provider() -> tuple[str, str]:
-    """Select the OpenAI api url using interactive selection."""
+    """Select the LLM API endpoint using interactive selection."""
+    llama_cpp_url = os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080/v1")
     # Define OpenAI api options with their corresponding endpoints
     BASE_URLS = [
-        ("OpenAI", "https://api.openai.com/v1"),
+        ("OpenAI", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
         ("Google", "https://generativelanguage.googleapis.com/v1"),
         ("Anthropic", "https://api.anthropic.com/"),
         ("xAI", "https://api.x.ai/v1"),
         ("Openrouter", "https://openrouter.ai/api/v1"),
         ("Ollama", "http://localhost:11434/v1"),
+        ("vLLM", "http://localhost:8000/v1"),
+        ("llama_cpp", llama_cpp_url),
+        ("Cerebras", "https://api.cerebras.ai/v1"),
     ]
     
     choice = questionary.select(
@@ -291,7 +347,7 @@ def select_llm_provider() -> tuple[str, str]:
     ).ask()
     
     if choice is None:
-        console.print("\n[red]no OpenAI backend selected. Exiting...[/red]")
+        console.print("\n[red]no LLM backend selected. Exiting...[/red]")
         exit(1)
     
     display_name, url = choice
@@ -310,26 +366,6 @@ def ask_openai_reasoning_effort() -> str:
     return questionary.select(
         "Select Reasoning Effort:",
         choices=choices,
-        style=questionary.Style([
-            ("selected", "fg:cyan noinherit"),
-            ("highlighted", "fg:cyan noinherit"),
-            ("pointer", "fg:cyan noinherit"),
-        ]),
-    ).ask()
-
-
-def ask_anthropic_effort() -> str | None:
-    """Ask for Anthropic effort level.
-
-    Controls token usage and response thoroughness on Claude 4.5+ and 4.6 models.
-    """
-    return questionary.select(
-        "Select Effort Level:",
-        choices=[
-            questionary.Choice("High (recommended)", "high"),
-            questionary.Choice("Medium (balanced)", "medium"),
-            questionary.Choice("Low (faster, cheaper)", "low"),
-        ],
         style=questionary.Style([
             ("selected", "fg:cyan noinherit"),
             ("highlighted", "fg:cyan noinherit"),

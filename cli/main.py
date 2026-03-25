@@ -437,9 +437,11 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
         stats_parts.append(f"LLM: {stats['llm_calls']}")
         stats_parts.append(f"Tools: {stats['tool_calls']}")
 
-        # Token display with graceful fallback
+        # Token display: many local/OpenAI-compatible backends omit usage; "--" looked like a disconnect
         if stats["tokens_in"] > 0 or stats["tokens_out"] > 0:
             tokens_str = f"Tokens: {format_tokens(stats['tokens_in'])}\u2191 {format_tokens(stats['tokens_out'])}\u2193"
+        elif stats["llm_calls"] > 0:
+            tokens_str = "Tokens: n/a"
         else:
             tokens_str = "Tokens: --"
         stats_parts.append(tokens_str)
@@ -461,8 +463,10 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
 
 def get_user_selections():
     """Get all user selections before starting the analysis display."""
+    from cli.env_selections import load_cli_selections_from_env
+
     # Display ASCII art welcome message
-    with open(Path(__file__).parent / "static" / "welcome.txt", "r") as f:
+    with open("./cli/static/welcome.txt", "r", encoding="utf-8") as f:
         welcome_ascii = f.read()
 
     # Create welcome box content
@@ -490,6 +494,32 @@ def get_user_selections():
     announcements = fetch_announcements()
     display_announcements(console, announcements)
 
+    try:
+        env_selections = load_cli_selections_from_env()
+    except ValueError as e:
+        console.print(f"[red]Environment configuration error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    if env_selections is not None:
+        console.print(
+            Panel(
+                "[bold]Non-interactive mode[/bold] ([cyan]TRADINGAGENTS_CLI_FROM_ENV[/cyan])\n\n"
+                f"Ticker: [green]{env_selections['ticker']}[/green]  |  "
+                f"Date: {env_selections['analysis_date']}\n"
+                f"Analysts: {', '.join(a.value for a in env_selections['analysts'])}\n"
+                f"Research depth: {env_selections['research_depth']}  |  "
+                f"Provider: {env_selections['llm_provider']}\n"
+                f"Backend URL: {env_selections['backend_url']}\n"
+                f"Quick model: {env_selections['shallow_thinker']!r}  |  "
+                f"Deep model: {env_selections['deep_thinker']!r}",
+                title="Configuration from environment",
+                border_style="cyan",
+                padding=(1, 2),
+            )
+        )
+        console.print()
+        return env_selections
+
     # Create a boxed questionnaire for each step
     def create_question_box(title, prompt, default=None):
         box_content = f"[bold]{title}[/bold]\n"
@@ -501,9 +531,7 @@ def get_user_selections():
     # Step 1: Ticker symbol
     console.print(
         create_question_box(
-            "Step 1: Ticker Symbol",
-            "Enter the exact ticker symbol to analyze, including exchange suffix when needed (examples: SPY, CNC.TO, 7203.T, 0700.HK)",
-            "SPY",
+            "Step 1: Ticker Symbol", "Enter the ticker symbol to analyze", "SPY"
         )
     )
     selected_ticker = get_ticker()
@@ -538,10 +566,10 @@ def get_user_selections():
     )
     selected_research_depth = select_research_depth()
 
-    # Step 5: OpenAI backend
+    # Step 5: LLM backend
     console.print(
         create_question_box(
-            "Step 5: OpenAI backend", "Select which service to talk to"
+            "Step 5: LLM backend", "Select which service to talk to"
         )
     )
     selected_llm_provider, backend_url = select_llm_provider()
@@ -558,7 +586,6 @@ def get_user_selections():
     # Step 7: Provider-specific thinking configuration
     thinking_level = None
     reasoning_effort = None
-    anthropic_effort = None
 
     provider_lower = selected_llm_provider.lower()
     if provider_lower == "google":
@@ -577,14 +604,6 @@ def get_user_selections():
             )
         )
         reasoning_effort = ask_openai_reasoning_effort()
-    elif provider_lower == "anthropic":
-        console.print(
-            create_question_box(
-                "Step 7: Effort Level",
-                "Configure Claude effort level"
-            )
-        )
-        anthropic_effort = ask_anthropic_effort()
 
     return {
         "ticker": selected_ticker,
@@ -597,7 +616,6 @@ def get_user_selections():
         "deep_thinker": selected_deep_thinker,
         "google_thinking_level": thinking_level,
         "openai_reasoning_effort": reasoning_effort,
-        "anthropic_effort": anthropic_effort,
     }
 
 
@@ -800,11 +818,9 @@ ANALYST_REPORT_MAP = {
 
 
 def update_analyst_statuses(message_buffer, chunk):
-    """Update analyst statuses based on accumulated report state.
+    """Update all analyst statuses based on current report state.
 
     Logic:
-    - Store new report content from the current chunk if present
-    - Check accumulated report_sections (not just current chunk) for status
     - Analysts with reports = completed
     - First analyst without report = in_progress
     - Remaining analysts without reports = pending
@@ -819,16 +835,11 @@ def update_analyst_statuses(message_buffer, chunk):
 
         agent_name = ANALYST_AGENT_NAMES[analyst_key]
         report_key = ANALYST_REPORT_MAP[analyst_key]
-
-        # Capture new report content from current chunk
-        if chunk.get(report_key):
-            message_buffer.update_report_section(report_key, chunk[report_key])
-
-        # Determine status from accumulated sections, not just current chunk
-        has_report = bool(message_buffer.report_sections.get(report_key))
+        has_report = bool(chunk.get(report_key))
 
         if has_report:
             message_buffer.update_agent_status(agent_name, "completed")
+            message_buffer.update_report_section(report_key, chunk[report_key])
         elif not found_active:
             message_buffer.update_agent_status(agent_name, "in_progress")
             found_active = True
@@ -930,7 +941,6 @@ def run_analysis():
     # Provider-specific thinking configuration
     config["google_thinking_level"] = selections.get("google_thinking_level")
     config["openai_reasoning_effort"] = selections.get("openai_reasoning_effort")
-    config["anthropic_effort"] = selections.get("anthropic_effort")
 
     # Create stats callback handler for tracking LLM/tool calls
     stats_handler = StatsCallbackHandler()
@@ -968,7 +978,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, message_type, content = obj.messages[-1]
             content = content.replace("\n", " ")  # Replace newlines with spaces
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [{message_type}] {content}\n")
         return wrapper
     
@@ -979,7 +989,7 @@ def run_analysis():
             func(*args, **kwargs)
             timestamp, tool_name, args = obj.tool_calls[-1]
             args_str = ", ".join(f"{k}={v}" for k, v in args.items())
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(f"{timestamp} [Tool Call] {tool_name}({args_str})\n")
         return wrapper
 
@@ -992,9 +1002,8 @@ def run_analysis():
                 content = obj.report_sections[section_name]
                 if content:
                     file_name = f"{section_name}.md"
-                    text = "\n".join(str(item) for item in content) if isinstance(content, list) else content
-                    with open(report_dir / file_name, "w") as f:
-                        f.write(text)
+                    with open(report_dir / file_name, "w", encoding="utf-8") as f:
+                        f.write(content)
         return wrapper
 
     message_buffer.add_message = save_message_decorator(message_buffer, "add_message")

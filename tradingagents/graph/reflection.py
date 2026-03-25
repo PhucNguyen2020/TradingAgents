@@ -3,6 +3,8 @@
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 
+from tradingagents.report_language import get_report_language_instruction
+
 
 class Reflector:
     """Handles reflection on decisions and updating memory."""
@@ -14,7 +16,8 @@ class Reflector:
 
     def _get_reflection_prompt(self) -> str:
         """Get the system prompt for reflection."""
-        return """
+        return (
+            """
 You are an expert financial analyst tasked with reviewing trading decisions/analysis and providing a comprehensive, step-by-step analysis. 
 Your goal is to deliver detailed insights into investment decisions and highlight opportunities for improvement, adhering strictly to the following guidelines:
 
@@ -45,6 +48,8 @@ Your goal is to deliver detailed insights into investment decisions and highligh
 
 Adhere strictly to these instructions, and ensure your output is detailed, accurate, and actionable. You will also be given objective descriptions of the market from a price movements, technical indicator, news, and sentiment perspective to provide more context for your analysis.
 """
+            + get_report_language_instruction()
+        )
 
     def _extract_current_situation(self, current_state: Dict[str, Any]) -> str:
         """Extract the current market situation from the state."""
@@ -110,12 +115,12 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         )
         invest_judge_memory.add_situations([(situation, result)])
 
-    def reflect_portfolio_manager(self, current_state, returns_losses, portfolio_manager_memory):
-        """Reflect on portfolio manager's decision and update memory."""
+    def reflect_risk_manager(self, current_state, returns_losses, risk_manager_memory):
+        """Reflect on risk manager's decision and update memory."""
         situation = self._extract_current_situation(current_state)
         judge_decision = current_state["risk_debate_state"]["judge_decision"]
 
         result = self._reflect_on_component(
-            "PORTFOLIO MANAGER", judge_decision, situation, returns_losses
+            "RISK JUDGE", judge_decision, situation, returns_losses
         )
-        portfolio_manager_memory.add_situations([(situation, result)])
+        risk_manager_memory.add_situations([(situation, result)])

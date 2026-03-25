@@ -39,21 +39,51 @@ class StatsCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Extract token usage from LLM response."""
+        tokens_in = 0
+        tokens_out = 0
+
         try:
             generation = response.generations[0][0]
         except (IndexError, TypeError):
-            return
+            generation = None
 
-        usage_metadata = None
-        if hasattr(generation, "message"):
+        if generation is not None and hasattr(generation, "message"):
             message = generation.message
-            if isinstance(message, AIMessage) and hasattr(message, "usage_metadata"):
-                usage_metadata = message.usage_metadata
+            if isinstance(message, AIMessage) and getattr(
+                message, "usage_metadata", None
+            ):
+                um = message.usage_metadata
+                if isinstance(um, dict):
+                    tokens_in = int(um.get("input_tokens") or 0)
+                    tokens_out = int(um.get("output_tokens") or 0)
 
-        if usage_metadata:
+        # OpenAI-compatible APIs (including some Ollama builds) expose usage on llm_output only
+        if tokens_in == 0 and tokens_out == 0 and response.llm_output:
+            tu = response.llm_output.get("token_usage")
+            if isinstance(tu, dict):
+                tokens_in = int(
+                    tu.get("prompt_tokens") or tu.get("input_tokens") or 0
+                )
+                tokens_out = int(
+                    tu.get("completion_tokens") or tu.get("output_tokens") or 0
+                )
+
+        if tokens_in == 0 and tokens_out == 0 and generation is not None:
+            gi = getattr(generation, "generation_info", None) or {}
+            if isinstance(gi, dict):
+                tu = gi.get("token_usage")
+                if isinstance(tu, dict):
+                    tokens_in = int(
+                        tu.get("prompt_tokens") or tu.get("input_tokens") or 0
+                    )
+                    tokens_out = int(
+                        tu.get("completion_tokens") or tu.get("output_tokens") or 0
+                    )
+
+        if tokens_in or tokens_out:
             with self._lock:
-                self.tokens_in += usage_metadata.get("input_tokens", 0)
-                self.tokens_out += usage_metadata.get("output_tokens", 0)
+                self.tokens_in += tokens_in
+                self.tokens_out += tokens_out
 
     def on_tool_start(
         self,
