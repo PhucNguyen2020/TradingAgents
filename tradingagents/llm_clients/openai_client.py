@@ -73,8 +73,20 @@ class OpenAIClient(BaseLLMClient):
             if "api_key" not in self.kwargs:
                 llm_kwargs["api_key"] = "vllm"
         elif self.provider == "ollama":
-            llm_kwargs["base_url"] = "http://localhost:11434/v1"
-            llm_kwargs["api_key"] = "ollama"  # Ollama doesn't require auth
+            # Ollama supports OpenAI-compatible API at `<host>/v1/chat/completions`.
+            # Local defaults to http://localhost:11434/v1.
+            llm_kwargs["base_url"] = (
+                self.base_url
+                or os.getenv("OLLAMA_BASE_URL")
+                or "http://localhost:11434/v1"
+            )
+            # Ollama Cloud requires auth via `Authorization: Bearer <OLLAMA_API_KEY>`.
+            # For local endpoints, api_key can be any value (ignored by Ollama).
+            api_key = os.getenv("OLLAMA_API_KEY")
+            if api_key:
+                llm_kwargs["api_key"] = api_key
+            else:
+                llm_kwargs["api_key"] = "ollama"
         elif self.provider == "llama_cpp":
             # llama.cpp server can expose OpenAI-compatible endpoints.
             llm_kwargs["base_url"] = self.base_url or "http://localhost:8000/v1"

@@ -149,6 +149,25 @@ def select_shallow_thinking_agent(provider) -> str:
             exit(1)
         return model.strip()
 
+    if provider_lower == "ollama":
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        if "ollama.com" in ollama_base_url:
+            model = questionary.text(
+                "Enter Ollama Cloud model id (e.g. gpt-oss:120b-cloud):",
+                default="",
+                validate=lambda x: len(x.strip()) > 0 or "Please enter a valid model id.",
+                style=questionary.Style(
+                    [
+                        ("text", "fg:green"),
+                        ("highlighted", "noinherit"),
+                    ]
+                ),
+            ).ask()
+            if not model:
+                console.print("\n[red]No Ollama model provided. Exiting...[/red]")
+                exit(1)
+            return model.strip()
+
     # Define shallow thinking llm engine options with their corresponding model names
     # Ordering: medium → light → heavy (balanced first for quick tasks)
     # Within same tier, newer models first
@@ -243,6 +262,25 @@ def select_deep_thinking_agent(provider) -> str:
             exit(1)
         return model.strip()
 
+    if provider_lower == "ollama":
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        if "ollama.com" in ollama_base_url:
+            model = questionary.text(
+                "Enter Ollama Cloud model id (e.g. gpt-oss:120b-cloud):",
+                default="",
+                validate=lambda x: len(x.strip()) > 0 or "Please enter a valid model id.",
+                style=questionary.Style(
+                    [
+                        ("text", "fg:green"),
+                        ("highlighted", "noinherit"),
+                    ]
+                ),
+            ).ask()
+            if not model:
+                console.print("\n[red]No Ollama model provided. Exiting...[/red]")
+                exit(1)
+            return model.strip()
+
     # Define deep thinking llm engine options with their corresponding model names
     # Ordering: heavy → medium → light (most capable first for deep tasks)
     # Within same tier, newer models first
@@ -317,6 +355,7 @@ def select_deep_thinking_agent(provider) -> str:
 def select_llm_provider() -> tuple[str, str]:
     """Select the LLM API endpoint using interactive selection."""
     llama_cpp_url = os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080/v1")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     # Define OpenAI api options with their corresponding endpoints
     BASE_URLS = [
         ("OpenAI", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
@@ -324,7 +363,7 @@ def select_llm_provider() -> tuple[str, str]:
         ("Anthropic", "https://api.anthropic.com/"),
         ("xAI", "https://api.x.ai/v1"),
         ("Openrouter", "https://openrouter.ai/api/v1"),
-        ("Ollama", "http://localhost:11434/v1"),
+        ("Ollama", ollama_base_url),
         ("vLLM", "http://localhost:8000/v1"),
         ("llama_cpp", llama_cpp_url),
         ("Cerebras", "https://api.cerebras.ai/v1"),

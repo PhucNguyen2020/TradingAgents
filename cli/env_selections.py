@@ -22,6 +22,10 @@ def _truthy(val: str | None) -> bool:
 
 def _default_backend_url(provider_lower: str) -> str:
     llama_cpp = os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080/v1")
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    # Ollama Cloud OpenAI-compatible endpoints use `https://ollama.com/v1`.
+    if "ollama.com" in ollama_base and "v1" not in ollama_base:
+        ollama_base = "https://ollama.com/v1"
     openai_base = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     defaults = {
         "openai": openai_base,
@@ -29,7 +33,7 @@ def _default_backend_url(provider_lower: str) -> str:
         "anthropic": "https://api.anthropic.com/",
         "xai": "https://api.x.ai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
-        "ollama": "http://localhost:11434/v1",
+        "ollama": ollama_base,
         "vllm": "http://localhost:8000/v1",
         "llama_cpp": llama_cpp,
         "cerebras": "https://api.cerebras.ai/v1",
