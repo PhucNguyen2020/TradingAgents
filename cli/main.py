@@ -1174,27 +1174,44 @@ def run_analysis():
     # Post-analysis prompts (outside Live context for clean interaction)
     console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
 
-    # Prompt to save report
-    save_choice = typer.prompt("Save report?", default="Y").strip().upper()
-    if save_choice in ("Y", "YES", ""):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_path = Path.cwd() / "reports" / f"{selections['ticker']}_{timestamp}"
-        save_path_str = typer.prompt(
-            "Save path (press Enter for default)",
-            default=str(default_path)
-        ).strip()
-        save_path = Path(save_path_str)
-        try:
-            report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
-            console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
-            console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
-        except Exception as e:
-            console.print(f"[red]Error saving report: {e}[/red]")
+    # Auto-save report (non-interactive)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = Path.cwd() / "reports" / f"{selections['ticker']}_{timestamp}"
+    report_file = None
+    try:
+        report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
+        console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
+        console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
+    except Exception as e:
+        console.print(f"[red]Error saving report: {e}[/red]")
 
-    # Prompt to display full report
-    display_choice = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper()
-    if display_choice in ("Y", "YES", ""):
-        display_complete_report(final_state)
+    # Optional: send report to Telegram if configured
+    if report_file and os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+        try:
+            from telegram import Bot  # type: ignore
+
+            bot = Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
+            chat_id = int(os.environ["TELEGRAM_CHAT_ID"])
+            text = report_file.read_text(encoding="utf-8")
+            # Split text to fit Telegram limits
+            chunk_size = 3500
+            parts = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+            for i, part in enumerate(parts, start=1):
+                header = f"[{i}/{len(parts)}]\n" if len(parts) > 1 else ""
+                bot.send_message(chat_id=chat_id, text=header + part)
+            # Also send file
+            with report_file.open("rb") as f:
+                bot.send_document(
+                    chat_id=chat_id,
+                    document=f,
+                    filename=report_file.name,
+                    caption=f"TradingAgents complete report for {selections['ticker']} ({selections['analysis_date']})",
+                )
+            console.print("[green]✓ Telegram report sent[/green]")
+        except Exception as e:
+            console.print(f"[red]Error sending Telegram report: {e}[/red]")
+
+    # Keep CLI output readable: do not auto-print the full report by default.
 
 
 @app.command()

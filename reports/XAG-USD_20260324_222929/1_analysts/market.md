@@ -1,1 +1,0 @@
-I'll start by retrieving the stock data for XAG-USD to understand its recent performance and then select the most relevant technical indicators.

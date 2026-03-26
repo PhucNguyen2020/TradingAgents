@@ -1,0 +1,1 @@
+Let's now have more details about Siemens related to renewable energy:
